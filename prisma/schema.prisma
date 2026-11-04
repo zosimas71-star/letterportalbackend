@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  
 }
 
 // =====================================================================
@@ -102,7 +103,7 @@ model Directory {
   description         String?  @db.Text
   parent_directory_id Int?
   is_active           Boolean  @default(true)
-  created_at          DateTime @default(now()) @db.DateTime(0)
+  created_at          DateTime @default(now()) @db.Timestamp(0)
 
   parent   Directory?  @relation("DirectoryHierarchy", fields: [parent_directory_id], references: [directory_id], onDelete: Restrict)
   children Directory[] @relation("DirectoryHierarchy")
@@ -132,7 +133,7 @@ model User {
   phone           String?       @db.VarChar(30)
   password_hash   String        @db.VarChar(255)
   account_status  AccountStatus @default(pending)
-  created_at      DateTime      @default(now()) @db.DateTime(0)
+  created_at      DateTime      @default(now()) @db.Timestamp(0)
 
   roleAssignments  UserRoleAssignment[] @relation("AssignedUser")
   assignmentsMade  UserRoleAssignment[] @relation("AssignmentMadeBy")
@@ -201,7 +202,7 @@ model UserRoleAssignment {
   role_id       Int
   directory_id  Int
   assigned_by   Int?
-  assigned_at   DateTime @default(now()) @db.DateTime(0)
+  assigned_at   DateTime @default(now()) @db.Timestamp(0)
   is_active     Boolean  @default(true)
 
   user      User      @relation("AssignedUser", fields: [user_id], references: [user_id], onDelete: Restrict)
@@ -228,7 +229,7 @@ model Letter {
   tracking_number       String           @unique @db.VarChar(100) // LTR-<year>-<letter_id padded>, set by the backend in the creating transaction
   subject               String           @db.VarChar(255)
   description           String?          @db.Text
-  letter_content        String?          @db.LongText
+  letter_content        String?          @db.Text
   source_type           LetterSourceType @default(generated)
   letter_type           LetterType
   letter_condition      LetterCondition  @default(initial)
@@ -241,10 +242,10 @@ model Letter {
   signature_id          Int
   status                LetterStatus     @default(send)
   letter_date           DateTime?        @db.Date
-  response_due_at      DateTime?        @db.DateTime(0)
-  created_at            DateTime         @default(now()) @db.DateTime(0)
-  updated_at            DateTime         @default(now()) @updatedAt @db.DateTime(0)
-  archived_at           DateTime?        @db.DateTime(0)
+  response_due_at       DateTime?        @db.Timestamp(0)
+  created_at            DateTime         @default(now()) @db.Timestamp(0)
+  updated_at            DateTime         @default(now()) @updatedAt @db.Timestamp(0)
+  archived_at           DateTime?        @db.Timestamp(0)
 
   creator           User             @relation("LetterCreator", fields: [created_by], references: [user_id], onDelete: Restrict)
   receiver          User             @relation("LetterReceiver", fields: [received_by], references: [user_id], onDelete: Restrict)
@@ -288,7 +289,7 @@ model LetterFile {
   capture_method    CaptureMethod @default(upload)
   page_number       Int?
   checksum_sha256   String?       @db.VarChar(64)
-  uploaded_at       DateTime      @default(now()) @db.DateTime(0)
+  uploaded_at       DateTime      @default(now()) @db.Timestamp(0)
 
   letter   Letter @relation(fields: [letter_id], references: [letter_id], onDelete: Cascade)
   uploader User   @relation(fields: [uploaded_by], references: [user_id], onDelete: Restrict)
@@ -310,8 +311,8 @@ model LetterResponse {
   responded_by            Int
   responding_directory_id Int
   response_status         ResponseStatus @default(send)
-  responded_at            DateTime       @default(now()) @db.DateTime(0)
-  created_at              DateTime       @default(now()) @db.DateTime(0)
+  responded_at            DateTime       @default(now()) @db.Timestamp(0)
+  created_at              DateTime       @default(now()) @db.Timestamp(0)
 
   letter              Letter    @relation("ResponseSourceLetter", fields: [letter_id], references: [letter_id], onDelete: Restrict)
   responseLetter      Letter    @relation("ResponseAttachedLetter", fields: [response_letter_id], references: [letter_id], onDelete: Restrict)
@@ -337,7 +338,7 @@ model LetterTemplate {
   directory_id         Int?
   created_by           Int
   is_active            Boolean  @default(true)
-  created_at           DateTime @default(now()) @db.DateTime(0)
+  created_at           DateTime @default(now()) @db.Timestamp(0)
 
   creator   User       @relation(fields: [created_by], references: [user_id], onDelete: Restrict)
   directory Directory? @relation(fields: [directory_id], references: [directory_id], onDelete: SetNull)
@@ -355,7 +356,7 @@ model DigitalSignature {
   signature_type      String   @db.VarChar(50)
   signature_reference String?  @db.VarChar(500)
   signature_image_url String?  @db.VarChar(500)
-  signed_at           DateTime @default(now()) @db.DateTime(0)
+  signed_at           DateTime @default(now()) @db.Timestamp(0)
   is_active           Boolean  @default(true)
 
   signer  User     @relation(fields: [signed_by], references: [user_id], onDelete: Restrict)
@@ -372,7 +373,7 @@ model Stamp {
   directory_id    Int?
   uploaded_by     Int
   is_active       Boolean  @default(true)
-  created_at      DateTime @default(now()) @db.DateTime(0)
+  created_at      DateTime @default(now()) @db.Timestamp(0)
 
   directory Directory? @relation(fields: [directory_id], references: [directory_id], onDelete: SetNull)
   uploader  User       @relation("StampUploader", fields: [uploaded_by], references: [user_id], onDelete: Restrict)
@@ -393,7 +394,7 @@ model Conversation {
   letter_id         Int?
   conversation_name String?          @db.VarChar(255)
   created_by        Int
-  created_at        DateTime         @default(now()) @db.DateTime(0)
+  created_at        DateTime         @default(now()) @db.Timestamp(0)
   is_active         Boolean          @default(true)
 
   creator  User                 @relation("ConversationCreator", fields: [created_by], references: [user_id], onDelete: Restrict)
@@ -411,8 +412,8 @@ model ConversationMember {
   conversation_member_id Int       @id @default(autoincrement())
   conversation_id        Int
   user_id                Int
-  joined_at              DateTime  @default(now()) @db.DateTime(0)
-  left_at                DateTime? @db.DateTime(0)
+  joined_at              DateTime  @default(now()) @db.Timestamp(0)
+  left_at                DateTime? @db.Timestamp(0)
 
   conversation Conversation @relation(fields: [conversation_id], references: [conversation_id], onDelete: Cascade)
   user         User         @relation(fields: [user_id], references: [user_id], onDelete: Restrict)
@@ -427,9 +428,9 @@ model Message {
   conversation_id Int
   sender_id       Int
   message_text    String    @db.Text
-  sent_at         DateTime  @default(now()) @db.DateTime(0)
-  edited_at       DateTime? @db.DateTime(0)
-  deleted_at      DateTime? @db.DateTime(0)
+  sent_at         DateTime  @default(now()) @db.Timestamp(0)
+  edited_at       DateTime? @db.Timestamp(0)
+  deleted_at      DateTime? @db.Timestamp(0)
 
   conversation Conversation        @relation(fields: [conversation_id], references: [conversation_id], onDelete: Cascade)
   sender       User                @relation(fields: [sender_id], references: [user_id], onDelete: Restrict)
@@ -448,7 +449,7 @@ model MessageAttachment {
   storage_key       String   @db.VarChar(500)
   mime_type         String?  @db.VarChar(100)
   file_size_bytes   BigInt?
-  uploaded_at       DateTime @default(now()) @db.DateTime(0)
+  uploaded_at       DateTime @default(now()) @db.Timestamp(0)
 
   message  Message @relation(fields: [message_id], references: [message_id], onDelete: Cascade)
   uploader User    @relation(fields: [uploaded_by], references: [user_id], onDelete: Restrict)
@@ -470,8 +471,8 @@ model Notification {
   message           String?   @db.Text
   related_letter_id Int?
   is_read           Boolean   @default(false)
-  created_at        DateTime  @default(now()) @db.DateTime(0)
-  read_at           DateTime? @db.DateTime(0)
+  created_at        DateTime  @default(now()) @db.Timestamp(0)
+  read_at           DateTime? @db.Timestamp(0)
 
   user   User    @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
   letter Letter? @relation(fields: [related_letter_id], references: [letter_id], onDelete: SetNull)
@@ -489,7 +490,7 @@ model AuditLog {
   entity_id    String?  @db.VarChar(100)
   details      String?  @db.Text
   ip_address   String?  @db.VarChar(45)
-  created_at   DateTime @default(now()) @db.DateTime(0)
+  created_at   DateTime @default(now()) @db.Timestamp(0)
 
   user User? @relation(fields: [user_id], references: [user_id], onDelete: SetNull)
 
@@ -509,10 +510,10 @@ model Announcement {
   title           String             @db.VarChar(255)
   content         String             @db.Text
   created_by      Int
-  published_at    DateTime?          @db.DateTime(0)
-  expires_at      DateTime?          @db.DateTime(0)
+  published_at    DateTime?          @db.Timestamp(0)
+  expires_at      DateTime?          @db.Timestamp(0)
   status          AnnouncementStatus @default(draft)
-  created_at      DateTime           @default(now()) @db.DateTime(0)
+  created_at      DateTime           @default(now()) @db.Timestamp(0)
 
   creator User @relation(fields: [created_by], references: [user_id], onDelete: Restrict)
 
@@ -528,8 +529,8 @@ model Faq {
   category     String?   @db.VarChar(100)
   created_by   Int?
   is_published Boolean   @default(false)
-  created_at   DateTime  @default(now()) @db.DateTime(0)
-  updated_at   DateTime? @updatedAt @db.DateTime(0)
+  created_at   DateTime  @default(now()) @db.Timestamp(0)
+  updated_at   DateTime? @updatedAt @db.Timestamp(0)
 
   creator User? @relation(fields: [created_by], references: [user_id], onDelete: SetNull)
 
@@ -545,8 +546,8 @@ model ContactInquiry {
   message        String        @db.Text
   inquiry_status InquiryStatus @default(new)
   assigned_to    Int?
-  submitted_at   DateTime      @default(now()) @db.DateTime(0)
-  resolved_at    DateTime?     @db.DateTime(0)
+  submitted_at   DateTime      @default(now()) @db.Timestamp(0)
+  resolved_at    DateTime?     @db.Timestamp(0)
 
   assignee User? @relation("InquiryAssignee", fields: [assigned_to], references: [user_id], onDelete: SetNull)
 

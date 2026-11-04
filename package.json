@@ -11,7 +11,7 @@
     "start": "node src/server.js",
     "test": "vitest run",
     "prisma:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev",
+    "db:migrate": "prisma migrate dev fourmigration",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "node prisma/seed.js",
     "format": "prettier --write \"{src,prisma,test}/**/*.js\""

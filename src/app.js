@@ -24,13 +24,13 @@ export function createApp() {
     }),
   );
   app.use(helmet());
-  app.use(
-    cors({
-      origin: env.CORS_ORIGIN.split(',').map((o) => o.trim()),
-      allowedHeaders: ['Authorization', 'Content-Type', 'X-Directory-Id', 'X-Request-Id'],
-      exposedHeaders: ['X-Request-Id'],
-    }),
-  );
+  // app.use(
+  //   cors({
+  //     origin: env.CORS_ORIGIN.split(',').map((o) => o.trim()),
+  //     allowedHeaders: ['Authorization', 'Content-Type', 'X-Directory-Id', 'X-Request-Id'],
+  //     exposedHeaders: ['X-Request-Id'],
+  //   }),
+  // );
   app.use(globalLimiter);
   app.use(express.json({ limit: '1mb' }));
   app.get('/health', (_req, res) => {
