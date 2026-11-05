@@ -7,9 +7,12 @@ import { storage } from '../../common/storage/local-storage.service.js';
 import { buildMeta, pageArgs, parseSort, searchOr } from '../../common/validation/pagination.js';
 import { assignmentSelect, userPublicSelect } from './users.select.js';
 import { statusChangeProblem } from './user-status.rules.js';
+
 const USER_SORT = ['user_id', 'first_name', 'last_name', 'email', 'employee_number', 'account_status', 'created_at'];
 const LETTER_SORT = ['letter_id', 'created_at', 'letter_date', 'subject', 'status', 'tracking_number'];
+
 const actor = (ctx) => ({ userId: ctx.userId, ip: ctx.ip });
+
 /** email / employee_number uniqueness with the codes the API design asks for. */
 async function assertUnique(fields, exceptUserId, employeeNumberCode = 'DUPLICATE_ENTRY') {
   if (fields.email) {
@@ -28,6 +31,7 @@ async function assertUnique(fields, exceptUserId, employeeNumberCode = 'DUPLICAT
     }
   }
 }
+
 async function loadUserStatus(userId) {
   const user = await prisma.user.findUnique({
     where: { user_id: userId },
@@ -36,18 +40,21 @@ async function loadUserStatus(userId) {
   if (!user) throw notFound('User');
   return user;
 }
+
 function assertStatusChange(from, to, targetUserId, ctx) {
   if (ctx.userId === targetUserId) throw forbidden('You cannot change your own account status.');
   const problem = statusChangeProblem(from, to);
   if (problem) throw new AppError('INVALID_STATE', { message: problem });
 }
+
 export const usersService = {
   /** USR-01 */
   async list(q) {
+    // User relation name in schema: roleAssignments (-> UserRoleAssignment)
     const assignmentFilter =
       q.directory_id || q.role_id
         ? {
-            role_assignments: {
+            roleAssignments: {
               some: {
                 is_active: true,
                 ...(q.directory_id ? { directory_id: q.directory_id } : {}),
@@ -56,12 +63,14 @@ export const usersService = {
             },
           }
         : {};
+
     const or = searchOr(q.q, ['first_name', 'last_name', 'email', 'employee_number']);
     const where = {
       ...(q.account_status ? { account_status: q.account_status } : {}),
       ...assignmentFilter,
       ...(or ? { OR: or } : {}),
     };
+
     const [data, total] = await prisma.$transaction([
       prisma.user.findMany({
         where,
@@ -73,10 +82,12 @@ export const usersService = {
     ]);
     return { data, meta: buildMeta(q.page, q.limit, total) };
   },
+
   /** USR-02 - always created as `pending` (activate with USR-05). */
   async create(input, ctx) {
     const { password, role_assignments = [], ...profile } = input;
     await assertUnique(profile);
+
     // validate the optional initial assignments up-front
     const unique = [...new Map(role_assignments.map((a) => [`${a.role_id}:${a.directory_id}`, a])).values()];
     if (unique.length) {
@@ -85,7 +96,8 @@ export const usersService = {
           where: { role_id: { in: unique.map((a) => a.role_id) } },
           select: {
             role_id: true,
-            role_permissions: { select: { permission: { select: { permission_code: true } } } },
+            // Role relation name in schema: permissions (-> RolePermission)
+            permissions: { select: { permission: { select: { permission_code: true } } } },
           },
         }),
         prisma.directory.findMany({
@@ -103,9 +115,10 @@ export const usersService = {
       for (const r of roles)
         assertCanGrant(
           ctx.permissions,
-          r.role_permissions.map((rp) => rp.permission.permission_code),
+          r.permissions.map((rp) => rp.permission.permission_code),
         );
     }
+
     const password_hash = await hashPassword(password);
     return prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
@@ -113,7 +126,8 @@ export const usersService = {
         select: userPublicSelect,
       });
       if (unique.length) {
-        await tx.roleAssignment.createMany({
+        // Model UserRoleAssignment -> client name userRoleAssignment
+        await tx.userRoleAssignment.createMany({
           data: unique.map((a) => ({
             user_id: user.user_id,
             role_id: a.role_id,
@@ -130,12 +144,14 @@ export const usersService = {
       return user;
     });
   },
+
   /** USR-03 */
   async get(userId) {
     const user = await prisma.user.findUnique({ where: { user_id: userId }, select: userPublicSelect });
     if (!user) throw notFound('User');
     return user;
   },
+
   /** USR-04 - account_status here follows the same rules (and needs `user.manage_status`). */
   async update(userId, patch, ctx) {
     const current = await loadUserStatus(userId);
@@ -144,6 +160,7 @@ export const usersService = {
       assertStatusChange(current.account_status, patch.account_status, userId, ctx);
     }
     await assertUnique({ email: patch.email, employee_number: patch.employee_number }, userId);
+
     return prisma.$transaction(async (tx) => {
       const user = await tx.user.update({ where: { user_id: userId }, data: patch, select: userPublicSelect });
       await auditService.write(
@@ -162,6 +179,7 @@ export const usersService = {
       return user;
     });
   },
+
   /** USR-05 */
   async setStatus(userId, next, ctx) {
     const current = await loadUserStatus(userId);
@@ -185,6 +203,7 @@ export const usersService = {
       return user;
     });
   },
+
   /** USR-06 */
   async resetPassword(userId, newPassword, ctx) {
     await loadUserStatus(userId);
@@ -194,15 +213,18 @@ export const usersService = {
       await auditService.write(actor(ctx), { action: 'user.reset_password', entityType: 'User', entityId: userId }, tx);
     });
   },
+
   /** USR-07 */
   async listAssignments(userId) {
     await loadUserStatus(userId);
-    return prisma.roleAssignment.findMany({
+    // Model UserRoleAssignment -> client name userRoleAssignment
+    return prisma.userRoleAssignment.findMany({
       where: { user_id: userId },
       select: assignmentSelect,
       orderBy: { assignment_id: 'asc' },
     });
   },
+
   /**
    * USR-08 - letters created by the user, limited to directories the CALLER can act in
    * (own letter.read permission is not enough to read other directories' mail).
@@ -216,6 +238,7 @@ export const usersService = {
       OR: [{ owning_directory_id: { in: dirs } }, { received_directory_id: { in: dirs } }],
       ...(or ? { AND: [{ OR: or }] } : {}),
     };
+
     const [rows, total] = await prisma.$transaction([
       prisma.letter.findMany({
         where,
@@ -263,10 +286,17 @@ export const usersService = {
       }),
       prisma.letter.count({ where }),
     ]);
+
     const data = rows.map((l) => ({
       ...l,
-      letter_date: l.letter_date.toISOString().slice(0, 10),
-      files: l.files.map(({ storage_key, ...f }) => ({ ...f, url: storage.signedUrl(storage_key) })),
+      // letter_date is optional (DateTime?) in the schema
+      letter_date: l.letter_date ? l.letter_date.toISOString().slice(0, 10) : null,
+      // file_size_bytes is BigInt, which JSON.stringify cannot serialize
+      files: l.files.map(({ storage_key, file_size_bytes, ...f }) => ({
+        ...f,
+        file_size_bytes: file_size_bytes === null ? null : Number(file_size_bytes),
+        url: storage.signedUrl(storage_key),
+      })),
     }));
     return { data, meta: buildMeta(q.page, q.limit, total) };
   },

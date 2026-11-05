@@ -3,26 +3,33 @@ import { AppError, notFound, validationError } from '../../common/errors/app-err
 import { auditService } from '../../common/audit/audit.service.js';
 import { assertCanGrant } from '../../common/security/privilege.js';
 import { buildMeta, pageArgs, parseSort, searchOr } from '../../common/validation/pagination.js';
+
 const ROLE_SORT = ['role_id', 'role_name'];
 const roleSelect = { role_id: true, role_name: true, description: true };
 const permissionSelect = { permission_id: true, permission_code: true, permission_name: true, description: true };
+
 const actor = (ctx) => ({ userId: ctx.userId, ip: ctx.ip });
+
 async function assertRoleExists(roleId, db = prisma) {
   const role = await db.role.findUnique({ where: { role_id: roleId }, select: { role_id: true } });
   if (!role) throw notFound('Role');
 }
+
 async function assertNameFree(name, exceptRoleId) {
   const hit = await prisma.role.findUnique({ where: { role_name: name }, select: { role_id: true } });
   if (hit && hit.role_id !== exceptRoleId) {
     throw new AppError('DUPLICATE_ENTRY', { message: 'A record with the same role_name already exists.' });
   }
 }
+
+// Permission relation name in schema: roles (-> RolePermission)
 const permissionsOfRole = (roleId, db = prisma) =>
   db.permission.findMany({
-    where: { role_permissions: { some: { role_id: roleId } } },
+    where: { roles: { some: { role_id: roleId } } },
     select: permissionSelect,
     orderBy: { permission_code: 'asc' },
   });
+
 export const rolesService = {
   /** USR-09 */
   async list(q) {
@@ -39,6 +46,7 @@ export const rolesService = {
     ]);
     return { data, meta: buildMeta(q.page, q.limit, total) };
   },
+
   /** USR-10 */
   async create(input, ctx) {
     await assertNameFree(input.role_name);
@@ -52,12 +60,14 @@ export const rolesService = {
       return role;
     });
   },
+
   /** USR-11 */
   async get(roleId) {
     const role = await prisma.role.findUnique({ where: { role_id: roleId }, select: roleSelect });
     if (!role) throw notFound('Role');
     return role;
   },
+
   /** USR-12 */
   async update(roleId, patch, ctx) {
     await assertRoleExists(roleId);
@@ -72,10 +82,12 @@ export const rolesService = {
       return role;
     });
   },
+
   /** USR-13 - blocked while any assignment still uses the role; its permission links are cascaded. */
   async remove(roleId, ctx) {
     await assertRoleExists(roleId);
-    const inUse = await prisma.roleAssignment.count({ where: { role_id: roleId } });
+    // Model UserRoleAssignment -> client name userRoleAssignment
+    const inUse = await prisma.userRoleAssignment.count({ where: { role_id: roleId } });
     if (inUse > 0) {
       throw new AppError('RESOURCE_IN_USE', {
         message: 'Cannot delete: this role is assigned to users. Deactivate or reassign those assignments first.',
@@ -87,11 +99,13 @@ export const rolesService = {
       await auditService.write(actor(ctx), { action: 'role.delete', entityType: 'Role', entityId: roleId }, tx);
     });
   },
+
   /** USR-14 */
   async listPermissions(roleId) {
     await assertRoleExists(roleId);
     return permissionsOfRole(roleId);
   },
+
   /**
    * USR-15 - transactional replace implemented as a diff (links that stay keep their id).
    * Only permissions NEWLY added must be held by the caller (anti-escalation).
@@ -105,6 +119,7 @@ export const rolesService = {
     });
     const missing = wanted.filter((id) => !found.some((p) => p.permission_id === id));
     if (missing.length) throw validationError('permission_ids', `Unknown permission ids: ${missing.join(', ')}.`);
+
     const current = await prisma.rolePermission.findMany({
       where: { role_id: roleId },
       select: { permission_id: true },
@@ -112,10 +127,12 @@ export const rolesService = {
     const currentIds = new Set(current.map((c) => c.permission_id));
     const toAdd = found.filter((p) => !currentIds.has(p.permission_id));
     const toRemove = [...currentIds].filter((id) => !wanted.includes(id));
+
     assertCanGrant(
       ctx.permissions,
       toAdd.map((p) => p.permission_code),
     );
+
     return prisma.$transaction(async (tx) => {
       if (toRemove.length)
         await tx.rolePermission.deleteMany({ where: { role_id: roleId, permission_id: { in: toRemove } } });
@@ -136,6 +153,7 @@ export const rolesService = {
       return permissionsOfRole(roleId, tx);
     });
   },
+
   /** USR-16 */
   async addPermission(roleId, permissionId, ctx) {
     await assertRoleExists(roleId);
@@ -151,6 +169,7 @@ export const rolesService = {
     if (existing)
       throw new AppError('DUPLICATE_ENTRY', { message: 'This permission is already assigned to the role.' });
     assertCanGrant(ctx.permissions, [permission.permission_code]);
+
     return prisma.$transaction(async (tx) => {
       const link = await tx.rolePermission.create({
         data: { role_id: roleId, permission_id: permissionId },
@@ -164,6 +183,7 @@ export const rolesService = {
       return link;
     });
   },
+
   /** USR-17 */
   async removePermission(roleId, permissionId, ctx) {
     await assertRoleExists(roleId);
