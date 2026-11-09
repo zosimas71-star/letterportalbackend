@@ -35,11 +35,21 @@ export const authService = {
       return user;
     });
   },
-  /** AUTH-02 */
+  /**
+   * AUTH-02 - returns the token pair PLUS what the UI needs right after sign-in:
+   * first/last name, role and directory (the user's first active assignment).
+   */
   async login(email, password, ctx) {
     const user = await prisma.user.findUnique({
       where: { email },
-      select: { user_id: true, password_hash: true, account_status: true },
+      select: {
+        user_id: true,
+        first_name: true,
+        last_name: true,
+        email: true,
+        password_hash: true,
+        account_status: true,
+      },
     });
     // always run one bcrypt comparison so timing does not reveal whether the email exists
     const passwordOk = await verifyPassword(password, user?.password_hash ?? DUMMY_HASH);
@@ -52,12 +62,39 @@ export const authService = {
     }
     // status is only disclosed AFTER the password has been proven correct
     if (user.account_status !== 'active') throw accountNotActive(user.account_status);
+
+    // primary assignment = the oldest active one in an active directory
+    const assignment = await prisma.userRoleAssignment.findFirst({
+      where: { user_id: user.user_id, is_active: true, directory: { is_active: true } },
+      orderBy: { assigned_at: 'asc' },
+      select: {
+        role: { select: { role_id: true, role_name: true } },
+        directory: { select: { directory_id: true, directory_name: true } },
+      },
+    });
+
     await prisma.user.update({ where: { user_id: user.user_id }, data: { last_login_at: new Date() } });
     await auditService.writeSafe(
       { userId: user.user_id, ip: ctx.ip },
       { action: 'auth.login', entityType: 'User', entityId: user.user_id },
     );
-    return issueTokenPair(user.user_id);
+
+    const tokens = await issueTokenPair(user.user_id); // { access_token, refresh_token, token_type, expires_in }
+
+    return {
+      ...tokens,
+      // built field by field so password_hash can never leak
+      user: {
+        user_id: user.user_id,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        email: user.email,
+        role_id: assignment?.role.role_id ?? null,
+        role_name: assignment?.role.role_name ?? null,
+        directory_id: assignment?.directory.directory_id ?? null,
+        directory_name: assignment?.directory.directory_name ?? null,
+      },
+    };
   },
   /** AUTH-03 - rotates both tokens; refuses when the account is no longer active. */
   async refresh(refreshToken) {
