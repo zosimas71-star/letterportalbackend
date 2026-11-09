@@ -1,8 +1,6 @@
 import model from './directory.model.js';
 import { AppError } from '../../common/errors/app-error.js';
-
-
- import { parsePagination } from '../../utils/index.js';
+import { parsePagination } from '../../utils/index.js';
 
 const paginate = (page, limit, total) => ({
   page,
@@ -10,6 +8,31 @@ const paginate = (page, limit, total) => ({
   total,
   total_pages: Math.ceil(total / limit) || 1
 });
+
+/**
+ * Turn a `sort` query value into a Prisma orderBy.
+ * Accepts "field", "-field", "field:asc" or "field:desc"; only whitelisted fields are used.
+ * Falls back to `fallback` (e.g. { directory_code: 'asc' }) when missing or not allowed.
+ */
+const parseSort = (sort, allowed, fallback) => {
+  if (!sort || typeof sort !== 'string') return fallback;
+
+  let field = sort.trim();
+  let direction = 'asc';
+
+  if (field.startsWith('-')) {
+    field = field.slice(1);
+    direction = 'desc';
+  } else if (field.includes(':')) {
+    const [f, d] = field.split(':');
+    field = f;
+    direction = d?.toLowerCase() === 'desc' ? 'desc' : 'asc';
+  }
+
+  return allowed.includes(field) ? { [field]: direction } : fallback;
+};
+
+const contains = (value) => ({ contains: value, mode: 'insensitive' });
 
 class DirectoryService {
   async getAll(query) {
@@ -29,13 +52,15 @@ class DirectoryService {
 
     if (q) {
       where.OR = [
-        { directory_code: { contains: q } },
-        { directory_name: { contains: q } },
-        { description: { contains: q } }
+        { directory_code: contains(q) },
+        { directory_name: contains(q) },
+        { description: contains(q) }
       ];
     }
 
-    const orderBy = parseSort(sort, ['directory_code', 'directory_name', 'created_at']);
+    const orderBy = parseSort(sort, ['directory_code', 'directory_name', 'created_at'], {
+      directory_code: 'asc'
+    });
 
     const [total, directories] = await Promise.all([
       model.countDirectories(where),
@@ -89,14 +114,16 @@ class DirectoryService {
 
     if (q) {
       where.OR = [
-        { first_name: { contains: q } },
-        { last_name: { contains: q } },
-        { email: { contains: q } },
-        { employee_number: { contains: q } }
+        { first_name: contains(q) },
+        { last_name: contains(q) },
+        { email: contains(q) },
+        { employee_number: contains(q) }
       ];
     }
 
-    const orderBy = parseSort(sort, ['first_name', 'last_name', 'created_at']);
+    const orderBy = parseSort(sort, ['first_name', 'last_name', 'created_at'], {
+      first_name: 'asc'
+    });
 
     const [total, users] = await Promise.all([
       model.countUsers(where),
