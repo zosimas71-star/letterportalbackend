@@ -53,9 +53,11 @@ export const withUploadCleanup = async (files, fn) => {
 // Express 4 doesn't catch rejected promises; forward them to the error middleware
 export const handle = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
-// Everything the service needs from the request, so the service never sees req/res
+// Everything the service needs from the request, so the service never sees req/res.
+// authorize() sets req.user (full user + active role); authenticate() alone only sets
+// req.auth.userId, so fall back to that to keep routes without authorize() working.
 export const ctx = (req) => ({
-  user: req.user,
+  user: req.user ?? (req.auth ? { user_id: req.auth.userId } : undefined),
   ip: req.ip,
   baseUrl: `${req.protocol}://${req.get('host')}`
 });
