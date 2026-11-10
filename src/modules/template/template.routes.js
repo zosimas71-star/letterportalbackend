@@ -7,19 +7,27 @@ import { authorize } from '../../common/middleware/authorize.js';
 
 const can = (permission) => authorize([], [permission]);
 const singleFile = uploadFiles('file', 1);
+// can('template.read')
+// can('template.create')
 
+// can('template.read'),
+// can('template.update'),
+//  can('template.delete')
+//  can('template.update'),
+//  can('template.read'),
 // ==========================================
 // TEMPLATES  -> mount at /templates
 // ==========================================
+
 const templateRouter = express.Router();
 templateRouter.use(authenticate);
 
-templateRouter.get('/', can('template.read'), controller.getTemplates);
-templateRouter.post('/', can('template.create'), controller.createTemplate);
-templateRouter.get('/:template_id', can('template.read'), controller.getTemplateById);
-templateRouter.patch('/:template_id', can('template.update'), controller.updateTemplate);
-templateRouter.delete('/:template_id', can('template.delete'), controller.deleteTemplate);
-templateRouter.post('/:template_id/file', can('template.update'), singleFile, controller.uploadTemplateFile);
-templateRouter.get('/:template_id/file', can('template.read'), controller.downloadTemplateFile);
+templateRouter.get('/',  controller.getTemplates);
+templateRouter.post('/', controller.createTemplate);
+templateRouter.get('/:template_id',  controller.getTemplateById);
+templateRouter.patch('/:template_id',  controller.updateTemplate);
+templateRouter.delete('/:template_id',  controller.deleteTemplate);
+templateRouter.post('/:template_id/file',  singleFile, controller.uploadTemplateFile);
+templateRouter.get('/:template_id/file',  controller.downloadTemplateFile);
 
 export default templateRouter;

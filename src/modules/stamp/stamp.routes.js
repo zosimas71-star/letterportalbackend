@@ -7,18 +7,21 @@ import { authorize } from '../../common/middleware/authorize.js';
 
 const can = (permission) => authorize([], [permission]);
 const singleFile = uploadFiles('file', 1);
-
+// can('stamp.read'),
+// can('stamp.update')
+// can('stamp.update'),
+// can('stamp.delete'),
 // ==========================================
 // STAMPS  -> mount at /stamps
 // ==========================================
 const stampRouter = express.Router();
 stampRouter.use(authenticate);
 
-stampRouter.get('/', can('stamp.read'), controller.getStamps);
-stampRouter.post('/', can('stamp.create'), controller.createStamp);
-stampRouter.get('/:stamp_id', can('stamp.read'), controller.getStampById);
-stampRouter.patch('/:stamp_id', can('stamp.update'), controller.updateStamp);
-stampRouter.delete('/:stamp_id', can('stamp.delete'), controller.deleteStamp);
-stampRouter.post('/:stamp_id/image', can('stamp.update'), singleFile, controller.uploadStampImage);
+stampRouter.get('/',  controller.getStamps);
+stampRouter.post('/',  controller.createStamp);
+stampRouter.get('/:stamp_id',  controller.getStampById);
+stampRouter.patch('/:stamp_id',  controller.updateStamp);
+stampRouter.delete('/:stamp_id',  controller.deleteStamp);
+stampRouter.post('/:stamp_id/image', singleFile, controller.uploadStampImage);
 
 export default stampRouter;
