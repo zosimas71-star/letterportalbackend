@@ -59,6 +59,14 @@ class LetterModel {
     });
   }
 
+  // NEW: every directory where the user currently has an active role
+  findActiveRoleAssignmentsByUser(userId, tx = prisma) {
+    return tx.userRoleAssignment.findMany({
+      where: { user_id: userId, is_active: true },
+      select: { directory_id: true }
+    });
+  }
+
   // ---------- Notifications & audit ----------
   createNotification(data, tx = prisma) {
     return tx.notification.create({ data });

@@ -24,7 +24,17 @@ const RESPONSE_TRANSITIONS = {
   archived: []
 };
 
-const dirIdsOf = (user) => (user.role_assignments || []).map((ra) => ra.directory_id);
+// FIX: authenticate() only sets req.auth = { userId }, so user.role_assignments is not
+// populated. Read the caller's active directories from the database instead
+// (memoized per user object, i.e. once per request).
+const dirIdsCache = new WeakMap();
+const getDirIds = async (user) => {
+  if (dirIdsCache.has(user)) return dirIdsCache.get(user);
+  const rows = await model.findActiveRoleAssignmentsByUser(user.user_id);
+  const ids = rows.map((r) => r.directory_id);
+  dirIdsCache.set(user, ids);
+  return ids;
+};
 
 const searchClause = (q) => ({
   OR: [
@@ -154,20 +164,16 @@ class LetterService {
   }
 
   // Visible = creator, receiver, or a user with an active role in the owning/receiving directory
-  canView(letter, user) {
+  async canView(letter, user) {
     if (isSystemAdmin(user)) return true;
-    const dirIds = dirIdsOf(user);
-    return (
-      letter.created_by === user.user_id ||
-      letter.received_by === user.user_id ||
-      dirIds.includes(letter.owning_directory_id) ||
-      dirIds.includes(letter.received_directory_id)
-    );
+    if (letter.created_by === user.user_id || letter.received_by === user.user_id) return true;
+    const dirIds = await getDirIds(user);
+    return dirIds.includes(letter.owning_directory_id) || dirIds.includes(letter.received_directory_id);
   }
 
   async loadVisibleLetter(rawId, user, include = {}) {
     const letter = await model.findLetterById(toId(rawId, 'letter_id'), include);
-    if (!letter || !this.canView(letter, user)) {
+    if (!letter || !(await this.canView(letter, user))) {
       throw new AppError('NOT_FOUND', { message: 'Letter does not exist or is not visible to the caller' });
     }
     return letter;
@@ -179,8 +185,19 @@ class LetterService {
     }
   }
 
-  isRecipient(letter, user) {
-    return letter.received_by === user.user_id || dirIdsOf(user).includes(letter.received_directory_id);
+  async isRecipient(letter, user) {
+    if (letter.received_by === user.user_id) return true;
+    return (await getDirIds(user)).includes(letter.received_directory_id);
+  }
+
+  // FIX: DB-backed check replaces dirIdsOf(user).includes(...)
+  async assertOwnDirectory(user, directoryId, field) {
+    const assignment = await model.findActiveRoleAssignment(user.user_id, directoryId);
+    if (!assignment) {
+      throw new AppError('DIRECTORY_ACCESS_DENIED', {
+        message: `${field} is not one of the caller's active role-assignment directories`
+      });
+    }
   }
 
   async assertRecipientInDirectory(receivedBy, receivedDirId) {
@@ -226,7 +243,7 @@ class LetterService {
 
   async getAll(query, ctx) {
     const { user } = ctx;
-    const dirIds = dirIdsOf(user);
+    const dirIds = await getDirIds(user);
 
     const and = [
       {
@@ -261,13 +278,14 @@ class LetterService {
 
   async getInbox(query, ctx, letterType = null) {
     const { user } = ctx;
+    const dirIds = await getDirIds(user);
     const and = [
       {
         OR: [
           { received_by: user.user_id },
           user.active_directory_id
             ? { received_directory_id: user.active_directory_id }
-            : { received_directory_id: { in: dirIdsOf(user) } }
+            : { received_directory_id: { in: dirIds } }
         ]
       }
     ];
@@ -281,13 +299,14 @@ class LetterService {
 
   async getOutbox(query, ctx, letterType = null) {
     const { user } = ctx;
+    const dirIds = await getDirIds(user);
     const and = [
       {
         OR: [
           { created_by: user.user_id },
           user.active_directory_id
             ? { owning_directory_id: user.active_directory_id }
-            : { owning_directory_id: { in: dirIdsOf(user) } }
+            : { owning_directory_id: { in: dirIds } }
         ]
       }
     ];
@@ -308,7 +327,7 @@ class LetterService {
 
   async getByTrackingNumber(trackingNumber, ctx) {
     const letter = await model.findLetterByTracking(trackingNumber);
-    if (!letter || !this.canView(letter, ctx.user)) {
+    if (!letter || !(await this.canView(letter, ctx.user))) {
       throw new AppError('NOT_FOUND', {
         message: 'Tracking number does not exist or is not visible to the caller'
       });
@@ -383,11 +402,7 @@ class LetterService {
       const stampId = toOptionalId(data.stamp_id, 'stamp_id');
       const templateId = toOptionalId(data.template_id, 'template_id');
 
-      if (!dirIdsOf(user).includes(owningDirId)) {
-        throw new AppError('DIRECTORY_ACCESS_DENIED', {
-          message: "owning_directory_id is not one of the caller's active role-assignment directories"
-        });
-      }
+      await this.assertOwnDirectory(user, owningDirId, 'owning_directory_id');
       await this.assertRecipientInDirectory(receivedBy, receivedDirId);
       await this.assertOwnSignature(signatureId, user);
 
@@ -594,7 +609,7 @@ class LetterService {
     if (letter.status !== 'send') {
       throw new AppError('INVALID_STATE', { message: 'Transition is not allowed.' });
     }
-    if (!this.isRecipient(letter, user)) {
+    if (!(await this.isRecipient(letter, user))) {
       throw new AppError('NOT_LETTER_RECIPIENT', { message: 'You are not the recipient of this letter.' });
     }
 
@@ -714,18 +729,14 @@ class LetterService {
     if (answered.status !== 'received' && answered.status !== 'responded') {
       throw new AppError('LETTER_NOT_RESPONDABLE', { message: 'Only received letters can be responded to.' });
     }
-    if (!this.isRecipient(answered, user)) {
+    if (!(await this.isRecipient(answered, user))) {
       throw new AppError('NOT_LETTER_RECIPIENT', { message: 'You are not the recipient of this letter.' });
     }
 
     const responseLetterId = toId(data.response_letter_id, 'response_letter_id');
     const respondingDirId = toId(data.responding_directory_id, 'responding_directory_id');
 
-    if (!dirIdsOf(user).includes(respondingDirId)) {
-      throw new AppError('DIRECTORY_ACCESS_DENIED', {
-        message: "responding_directory_id is not one of the caller's active role-assignment directories"
-      });
-    }
+    await this.assertOwnDirectory(user, respondingDirId, 'responding_directory_id');
 
     const responseLetter = await model.findLetterById(responseLetterId);
     if (!responseLetter || responseLetter.created_by !== user.user_id || responseLetter.letter_condition !== 'response') {
