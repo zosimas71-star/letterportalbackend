@@ -9,7 +9,28 @@ const can = (permission) => authorize([], [permission]);
 
 // uploadFiles(field, maxFiles) -> req.files is always an array
 const letterFiles = uploadFiles('files', 30);
-
+// can('letter.read')
+// can('letter.read'),
+// can('letter.read'),
+// can('letter.read'),
+// can('letter.read'),
+// can('letter.read'),
+// can('letter.read'),
+// can('letter.read'),
+// can('letter.receive'), 
+// can('letter.close'),
+// can('letter.archive'),
+// can('letter.archive'),
+// can('letter.sign'),
+// can('response.read'),
+// can('response.create'),
+// can('letter.read'),
+// can('letter.create'),
+// can('letter.read'),
+// can('letter.update'),
+//  can('letter.delete'),
+//  can('response.read'),
+//  can('response.update'),
 // ==========================================
 // LETTERS  -> mount at /letters
 // ==========================================
@@ -17,40 +38,40 @@ const letterRouter = express.Router();
 letterRouter.use(authenticate);
 
 // Lists (must stay above '/:letter_id')
-letterRouter.get('/inbox', can('letter.read'), controller.getInbox);
-letterRouter.get('/outbox', can('letter.read'), controller.getOutbox);
-letterRouter.get('/internal-inbox', can('letter.read'), controller.getInternalInbox);
-letterRouter.get('/internal-outbox', can('letter.read'), controller.getInternalOutbox);
-letterRouter.get('/outside-inbox', can('letter.read'), controller.getOutsideInbox);
-letterRouter.get('/outside-outbox', can('letter.read'), controller.getOutsideOutbox);
+letterRouter.get('/inbox',  controller.getInbox);
+letterRouter.get('/outbox',  controller.getOutbox);
+letterRouter.get('/internal-inbox',  controller.getInternalInbox);
+letterRouter.get('/internal-outbox',  controller.getInternalOutbox);
+letterRouter.get('/outside-inbox',  controller.getOutsideInbox);
+letterRouter.get('/outside-outbox',  controller.getOutsideOutbox);
 
-letterRouter.get('/track/:tracking_number', can('letter.read'), controller.track);
+letterRouter.get('/track/:tracking_number',  controller.track);
 
 // Lifecycle
-letterRouter.get('/:letter_id/timeline', can('letter.read'), controller.getTimeline);
-letterRouter.post('/:letter_id/receive', can('letter.receive'), controller.receive);
-letterRouter.post('/:letter_id/close', can('letter.close'), controller.close);
-letterRouter.post('/:letter_id/archive', can('letter.archive'), controller.archive);
-letterRouter.post('/:letter_id/unarchive', can('letter.archive'), controller.unarchive);
-letterRouter.put('/:letter_id/signature', can('letter.sign'), controller.applySignature);
+letterRouter.get('/:letter_id/timeline',  controller.getTimeline);
+letterRouter.post('/:letter_id/receive', controller.receive);
+letterRouter.post('/:letter_id/close',  controller.close);
+letterRouter.post('/:letter_id/archive',  controller.archive);
+letterRouter.post('/:letter_id/unarchive',  controller.unarchive);
+letterRouter.put('/:letter_id/signature',  controller.applySignature);
 
 // Responses under a letter
-letterRouter.get('/:letter_id/responses', can('response.read'), controller.getResponsesByLetter);
-letterRouter.post('/:letter_id/responses', can('response.create'), controller.sendLetterResponse);
+letterRouter.get('/:letter_id/responses',  controller.getResponsesByLetter);
+letterRouter.post('/:letter_id/responses',  controller.sendLetterResponse);
 
 // CRUD
-letterRouter.get('/', can('letter.read'), controller.getAll);
-letterRouter.post('/', can('letter.create'), letterFiles, controller.create);
-letterRouter.get('/:letter_id', can('letter.read'), controller.getById);
-letterRouter.patch('/:letter_id', can('letter.update'), letterFiles, controller.update);
-letterRouter.delete('/:letter_id', can('letter.delete'), controller.remove);
+letterRouter.get('/',  controller.getAll);
+letterRouter.post('/',  letterFiles, controller.create);
+letterRouter.get('/:letter_id',  controller.getById);
+letterRouter.patch('/:letter_id',  letterFiles, controller.update);
+letterRouter.delete('/:letter_id', controller.remove);
 
 // ==========================================
 // RESPONSES  -> mount at /responses
 // ==========================================
 const responseRouter = express.Router();
 responseRouter.use(authenticate);
-responseRouter.get('/:response_id', can('response.read'), controller.getResponseById);
-responseRouter.post('/:response_id/status', can('response.update'), controller.updateResponseStatus);
+responseRouter.get('/:response_id',  controller.getResponseById);
+responseRouter.post('/:response_id/status',  controller.updateResponseStatus);
 
 export { letterRouter, responseRouter };
