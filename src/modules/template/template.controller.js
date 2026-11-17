@@ -21,6 +21,9 @@ export default {
   // uploadFiles('file', 1) -> req.files is an array
   uploadTemplateFile: handle(async (req, res) =>
     sendResponse(res, 200, await service.uploadTemplateFile(req.params.template_id, req.files?.[0]))),
-  downloadTemplateFile: handle(async (req, res) =>
-    res.download(await service.getTemplateFilePath(req.params.template_id)))
+   downloadTemplateFile: handle(async (req, res) => {
+    const loc = await service.getTemplateFileLocation(req.params.template_id);
+    if (loc.type === 'url') return res.redirect(loc.value);
+    return res.download(loc.value);
+  }),
 };

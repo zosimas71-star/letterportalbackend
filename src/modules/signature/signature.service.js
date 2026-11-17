@@ -22,6 +22,7 @@ function text(value, field, max, required = false) {
 
 class SignatureService {
   // List: only the caller's own signatures
+   // List: only the caller's own signatures
   async list(query, userId) {
     const { page, limit, skip, sort, q } = parsePagination(query);
     const where = { signed_by: userId };
@@ -35,7 +36,12 @@ class SignatureService {
       ];
     }
 
-    const orderBy = parseSort(sort, ['signed_at', 'signature_type']);
+    // Only trust a sort the client really sent; otherwise newest first by signed_at.
+    // (parsePagination's default sort is created_at, which this table does not have.)
+    const orderBy = query.sort
+      ? parseSort(sort, ['signed_at', 'signature_type'])
+      : { signed_at: 'desc' };
+
     const [total, items] = await Promise.all([
       model.count(where),
       model.findMany({ where, skip, take: limit, orderBy }),
