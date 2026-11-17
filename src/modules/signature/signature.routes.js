@@ -1,22 +1,22 @@
 import express from 'express';
 import controller from './signature.controller.js';
-
-import { authenticate } from '../../common/middleware/authenticate.js';
 import { authorize } from '../../common/middleware/authorize.js';
+import { uploadImages } from '../../common/storage/upload.middleware.js';
 
 const can = (permission) => authorize([], [permission]);
-// can('signature.read')
-// an('signature.create')
-// can('signature.update')
-// ==========================================
-// SIGNATURES  -> mount at /signatures
-// ==========================================
-const signatureRouter = express.Router();
-signatureRouter.use(authenticate);
+const singleImage = uploadImages('file', 1, 'signatures');
 
-signatureRouter.get('/',  controller.getSignatures);
-signatureRouter.post('/',  controller.createSignature);
-signatureRouter.get('/:signature_id', controller.getSignatureById);
-signatureRouter.delete('/:signature_id', controller.deleteSignature);
+// mounted at /signatures (authenticate is applied in routes.js)
+const signatureRouter = express.Router();
+// can('signature.read')
+// can('signature.create')
+// can('signature.read')
+// can('signature.update')
+// can('signature.create'),
+signatureRouter.get('/',  controller.list);
+signatureRouter.post('/', controller.create);
+signatureRouter.get('/:signature_id', controller.getById);
+signatureRouter.patch('/:signature_id', controller.setActive);
+signatureRouter.post('/:signature_id/image',  singleImage, controller.uploadImage);
 
 export default signatureRouter;

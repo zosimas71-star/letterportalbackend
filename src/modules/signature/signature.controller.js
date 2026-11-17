@@ -1,18 +1,21 @@
 import service from './signature.service.js';
-import { handle, ctx } from '../../shared/module-helpers.js';
+import { handle } from '../../shared/module-helpers.js';
 import { sendResponse } from '../../utils/index.js';
 
+// set by the authenticate middleware
+const uid = (req) => Number(req.auth.userId);
+
 export default {
-  getSignatures: handle(async (req, res) => {
-    const result = await service.getSignatures(req.query, ctx(req));
-    sendResponse(res, 200, result.signatures, result.pagination);
+  list: handle(async (req, res) => {
+    const r = await service.list(req.query, uid(req));
+    sendResponse(res, 200, r.items, r.pagination);
   }),
-  getSignatureById: handle(async (req, res) =>
-    sendResponse(res, 200, await service.getSignatureById(req.params.signature_id, ctx(req)))),
-  createSignature: handle(async (req, res) =>
-    sendResponse(res, 201, await service.createSignature(req.body, ctx(req)))),
-  deleteSignature: handle(async (req, res) => {
-    const result = await service.deleteSignature(req.params.signature_id, ctx(req));
-    sendResponse(res, 200, null, null, result.message);
-  })
+  getById: handle(async (req, res) =>
+    sendResponse(res, 200, await service.getById(req.params.signature_id, uid(req)))),
+  create: handle(async (req, res) =>
+    sendResponse(res, 201, await service.create(req.body, uid(req)))),
+  setActive: handle(async (req, res) =>
+    sendResponse(res, 200, await service.setActive(req.params.signature_id, req.body, uid(req)))),
+  uploadImage: handle(async (req, res) =>
+    sendResponse(res, 200, await service.uploadImage(req.params.signature_id, req.files?.[0], uid(req)))),
 };

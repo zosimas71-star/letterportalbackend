@@ -15,7 +15,6 @@ function normalise(err) {
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
     switch (err.code) {
       case 'P2002': {
-        // Safety net for races; services normally pre-check and raise a precise code.
         const target = err.meta?.target ?? [];
         const fields = (Array.isArray(target) ? target : [target]).join(', ');
         return {
@@ -38,7 +37,6 @@ function normalise(err) {
     }
     return { status: 422, code: 'VALIDATION_ERROR', message: `Upload rejected: ${err.message}` };
   }
-  // body-parser errors carry `type`
   const type = err?.type;
   if (type === 'entity.parse.failed') {
     return { status: 422, code: 'VALIDATION_ERROR', message: 'Malformed JSON body.' };
@@ -48,21 +46,37 @@ function normalise(err) {
   }
   return { status: 500, code: 'INTERNAL_SERVER_ERROR', message: ERROR_CATALOG.INTERNAL_SERVER_ERROR.message };
 }
-/** Removes files multer already wrote when the request ended up failing. */
+
+/** Real error text, also for plain objects (Cloudinary) and strings. */
+function rawMessage(err) {
+  if (!err) return undefined;
+  if (typeof err === 'string') return err;
+  return err.message ?? err.error?.message ?? (() => {
+    try { return JSON.stringify(err); } catch { return String(err); }
+  })();
+}
+
+/** Removes only LOCAL files. Cloudinary files have an https URL as `path`. */
 function cleanupUploads(req) {
   const files = [
     ...(Array.isArray(req.files) ? req.files : Object.values(req.files ?? {}).flat()),
     ...(req.file ? [req.file] : []),
   ];
-  for (const f of files) fs.promises.unlink(f.path).catch(() => undefined);
+  for (const f of files) {
+    if (f?.path && !/^https?:\/\//i.test(f.path)) fs.promises.unlink(f.path).catch(() => undefined);
+  }
 }
-// Express identifies error middleware by arity (4 args) - keep `_next`.
+
 export const errorHandler = (err, req, res, _next) => {
   const n = normalise(err);
   cleanupUploads(req);
+
   if (n.status >= 500) {
+    console.error('=== ERROR STACK ===');
+    console.error(err?.stack || err);
     logger.error({ err, method: req.method, url: req.originalUrl }, 'Unhandled error');
   }
+
   if (res.headersSent) return;
   res.status(n.status).json({
     success: false,
@@ -70,7 +84,8 @@ export const errorHandler = (err, req, res, _next) => {
       code: n.code,
       message: n.message,
       ...(n.details !== undefined ? { details: n.details } : {}),
-      ...(!isProd && n.status >= 500 && err instanceof Error ? { debug: err.message } : {}),
+      // dev only: the real cause for any unexpected 500
+      ...(!isProd && n.status >= 500 ? { debug: rawMessage(err) } : {}),
     },
   });
 };
